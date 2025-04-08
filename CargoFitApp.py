@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter  # kept for other parts if needed
 import io
 
-# Display the OnFly Air logo (ensure "OFA_Gold_Black.png" is in the repository root)
+# Display the OnFly Air logo
 st.image("OFA_Gold_Black.png", width=200)
 
 st.title("OnFly Air Cargo Fit Tool")
@@ -17,9 +16,7 @@ csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_N
 def load_aircraft_data(url):
     try:
         df = pd.read_csv(url)
-        # Clean column names
         df.columns = [col.strip() for col in df.columns]
-        # Process numeric columns: remove commas, tildes, and extra spaces.
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -39,15 +36,12 @@ def load_aircraft_data(url):
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# Load aircraft specifications
 df_aircraft = load_aircraft_data(csv_url)
 
 if df_aircraft.empty:
     st.error("Aircraft data could not be loaded. Please check your network connection or spreadsheet settings.")
 else:
-    # ---------------------------
-    # Step 1: Aircraft Selection
-    # ---------------------------
+    # ----- STEP 1: Aircraft Selection -----
     st.header("Step 1: Select an Aircraft")
     aircraft_options = df_aircraft["Aircraft"].dropna().unique()
     selected_aircraft_model = st.selectbox("Select Aircraft", options=aircraft_options)
@@ -59,13 +53,15 @@ else:
     st.write(f"**Cabin Dimensions:** {selected_aircraft['Cabin Length (in)']} in (L) x {selected_aircraft['Cabin Width (in)']} in (W) x {selected_aircraft['Cabin Height (in)']} in (H)")
     st.write(f"**Max Payload:** {selected_aircraft['Max Payload (lbs)']} lbs")
     st.write(f"**Seats:** {int(selected_aircraft['Number of Seats'])} (Removable: {int(selected_aircraft['Removable Seats'])})")
-    st.write(f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in")
+    st.write(
+        f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, "
+        f"Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x "
+        f"{selected_aircraft['Seat Height (in)']} in"
+    )
     
     st.markdown("---")
     
-    # ---------------------------
-    # Step 2: Cargo (Part) Input
-    # ---------------------------
+    # ----- STEP 2: Cargo (Part) Input -----
     st.header("Step 2: Enter Cargo (Part) Details")
     part_name = st.text_input("Part Name")
     col1, col2, col3 = st.columns(3)
@@ -91,18 +87,22 @@ else:
     if remove_seat:
         max_removable = selected_aircraft.get("Removable Seats", 0)
         max_removable = int(max_removable) if pd.notnull(max_removable) else 0
-        seats_removed = st.number_input("Number of Seats to Remove", min_value=1, max_value=max_removable if max_removable > 0 else 1, value=1, step=1)
+        seats_removed = st.number_input(
+            "Number of Seats to Remove",
+            min_value=1,
+            max_value=max_removable if max_removable > 0 else 1,
+            value=1, step=1
+        )
     else:
         seats_removed = 0
     
     st.markdown("---")
     
-    # ---------------------------
-    # Step 3: Save/Load Parts (Optional)
-    # ---------------------------
+    # ----- STEP 3: Save/Load Parts (Optional) -----
     st.header("Step 3: Save/Load Parts")
     if "saved_parts" not in st.session_state:
         st.session_state.saved_parts = {}
+    
     if st.button("Save Part"):
         if part_name:
             st.session_state.saved_parts[part_name] = {
@@ -114,6 +114,7 @@ else:
             st.success(f"Saved part: {part_name}")
         else:
             st.error("Please provide a Part Name to save.")
+    
     if st.session_state.saved_parts:
         saved_options = list(st.session_state.saved_parts.keys())
         saved_selected = st.selectbox("Select a saved part to load values", options=saved_options)
@@ -127,9 +128,7 @@ else:
     
     st.markdown("---")
     
-    # ---------------------------
-    # Step 4: Mission Feasibility Calculation
-    # ---------------------------
+    # ----- STEP 4: Mission Feasibility Calculation -----
     st.header("Step 4: Mission Feasibility Calculation")
     total_cargo_weight = part_weight + (num_mechanics * avg_mech_weight) + tool_weight
     seat_weight_col = selected_aircraft.get("Seat Weight (lbs)", float('nan'))
@@ -137,15 +136,17 @@ else:
         additional_payload = seats_removed * seat_weight_col
     else:
         additional_payload = 0
+    
     max_payload_col = selected_aircraft["Max Payload (lbs)"]
     if pd.isnull(max_payload_col):
         st.warning("Max payload data is missing for this aircraft. Payload check not possible.")
         available_payload = float('nan')
     else:
         available_payload = max_payload_col + additional_payload
-
+    
     st.write(f"**Total Required Payload Weight:** {total_cargo_weight:.2f} lbs")
     st.write(f"**Available Payload:** {available_payload:.2f} lbs")
+    
     if pd.notnull(available_payload):
         if total_cargo_weight <= available_payload:
             st.success("Payload check: Within available limits!")
@@ -160,8 +161,10 @@ else:
     if pd.isnull(door_w) or pd.isnull(door_h):
         st.warning("Door dimensions are missing. Cannot verify door fit.")
     else:
-        fits_door = ((part_length <= door_w and part_width <= door_h) or
-                     (part_length <= door_h and part_width <= door_w))
+        fits_door = (
+            (part_length <= door_w and part_width <= door_h) or
+            (part_length <= door_h and part_width <= door_w)
+        )
     
     if fits_door:
         st.success("The cargo fits through the aircraft door.")
@@ -184,44 +187,47 @@ else:
     
     st.markdown("---")
     
-    # ---------------------------
-    # Step 5: Visualization
-    # ---------------------------
+    # ----- STEP 5: Visualization (Static) -----
     st.header("Step 5: Visualization")
-    st.markdown("Below are static visualizations showing how the cargo can be positioned through the door in two orientations.")
+    st.markdown(
+        "Below are side-by-side diagrams showing the cargo (green or red) vs. the door (blue). "
+        "If the cargo is bigger than the door in any dimension, it will appear in red."
+    )
     
     def create_cargo_visualization(door_w, door_h, cargo_length, cargo_width):
-        # Create a figure with two subplots side-by-side
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
         
-        # Orientation 1: Cargo as (Length x Width)
-        ax1.set_title("Orientation 1: (L x W)")
-        door_rect = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
-        ax1.add_patch(door_rect)
-        # Center the cargo in the door area for illustration
-        cargo_rect1 = plt.Rectangle(((door_w - cargo_length) / 2, (door_h - cargo_width) / 2),
-                                    cargo_length, cargo_width,
-                                    edgecolor='green' if (cargo_length <= door_w and cargo_width <= door_h) else 'red',
-                                    facecolor='none', lw=2)
+        # ----- Orientation 1: (Length x Width) -----
+        ax1.set_title("Orientation 1 (L x W)")
+        # Draw the door (blue)
+        door_rect1 = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
+        ax1.add_patch(door_rect1)
+        # Draw the cargo
+        color1 = "green" if (cargo_length <= door_w and cargo_width <= door_h) else "red"
+        cargo_rect1 = plt.Rectangle((0, 0), cargo_length, cargo_width, edgecolor=color1, facecolor='none', lw=2)
         ax1.add_patch(cargo_rect1)
-        ax1.set_xlim(0, door_w + 20)
-        ax1.set_ylim(0, door_h + 20)
+        
+        ax1.set_xlim(0, max(door_w, cargo_length) + 5)
+        ax1.set_ylim(0, max(door_h, cargo_width) + 5)
+        ax1.set_aspect("equal", "box")
         ax1.set_xlabel("inches")
         ax1.set_ylabel("inches")
         
-        # Orientation 2: Cargo as (Width x Length)
-        ax2.set_title("Orientation 2: (W x L)")
+        # ----- Orientation 2: (Width x Length) -----
+        ax2.set_title("Orientation 2 (W x L)")
         door_rect2 = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
         ax2.add_patch(door_rect2)
-        cargo_rect2 = plt.Rectangle(((door_w - cargo_width) / 2, (door_h - cargo_length) / 2),
-                                    cargo_width, cargo_length,
-                                    edgecolor='green' if (cargo_width <= door_w and cargo_length <= door_h) else 'red',
-                                    facecolor='none', lw=2)
+        
+        color2 = "green" if (cargo_width <= door_w and cargo_length <= door_h) else "red"
+        cargo_rect2 = plt.Rectangle((0, 0), cargo_width, cargo_length, edgecolor=color2, facecolor='none', lw=2)
         ax2.add_patch(cargo_rect2)
-        ax2.set_xlim(0, door_w + 20)
-        ax2.set_ylim(0, door_h + 20)
+        
+        ax2.set_xlim(0, max(door_w, cargo_width) + 5)
+        ax2.set_ylim(0, max(door_h, cargo_length) + 5)
+        ax2.set_aspect("equal", "box")
         ax2.set_xlabel("inches")
         
+        fig.suptitle("Mockup: Door vs Cargo in Two Orientations")
         plt.tight_layout()
         return fig
     
@@ -231,6 +237,6 @@ else:
     else:
         st.info("Door dimensions unavailable; cannot display visualization.")
     
-    st.markdown("---")
-    st.header("Notes")
-    st.markdown("The visualizations illustrate two possible placements for the cargo relative to the door. A green outline indicates that the cargo fits, while red indicates it does not.")
+    st.markdown(
+        "A **green** cargo outline means it fits. If the cargo outline is **red**, it's too large in at least one dimension."
+    )
