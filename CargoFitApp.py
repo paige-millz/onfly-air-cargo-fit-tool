@@ -11,19 +11,24 @@ csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_N
 def load_aircraft_data(url):
     try:
         df = pd.read_csv(url)
+        # Clean any leading/trailing whitespace from all column names
+        df.columns = [col.strip() for col in df.columns]
         return df
     except Exception as e:
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# Load aircraft specs from Google Sheet
+# Load aircraft specs from the Google Sheet
 df_aircraft = load_aircraft_data(csv_url)
 
 if df_aircraft.empty:
-    st.error("Aircraft data could not be loaded. Please check your network connection or spreadsheet settings.")
+    st.error("Aircraft data could not be loaded. Please check your network connection or the spreadsheet settings.")
 else:
+    # (Optional) For debugging, list the available columns.
+    st.write("Available columns:", df_aircraft.columns.tolist())
+
     st.sidebar.subheader("Aircraft Selection")
-    # List the aircraft models (assumes the CSV column is named "Model")
+    # Assumes the CSV has a column named "Model"
     aircraft_options = df_aircraft["Model"].dropna().unique()
     selected_model = st.sidebar.selectbox("Select Aircraft", options=aircraft_options)
     
@@ -69,10 +74,10 @@ else:
     remove_seat = st.checkbox("Remove a seat (cargo-only flight)?")
     if remove_seat:
         max_removable = selected_aircraft.get("Removable_Seats", 0)
-        seats_removed = st.number_input("Number of Seats to Remove", 
-                                        min_value=1, 
-                                        max_value=int(max_removable) if pd.notnull(max_removable) else 1, 
-                                        value=1, 
+        seats_removed = st.number_input("Number of Seats to Remove",
+                                        min_value=1,
+                                        max_value=int(max_removable) if pd.notnull(max_removable) else 1,
+                                        value=1,
                                         step=1)
     else:
         seats_removed = 0
@@ -112,10 +117,10 @@ else:
     # Calculation and Fit Checks
     st.subheader("Calculation Results")
     
-    # Calculate total payload needed:
+    # Total required payload weight includes cargo, mechanics, and tools
     total_cargo_weight = part_weight + (num_mechanics * avg_mech_weight) + tool_weight
     
-    # If seats are removed, assume the weight of each removed seat is added back to payload capacity.
+    # If seats are removed, add the weight back to available payload capacity.
     if seats_removed > 0:
         seat_weight = selected_aircraft.get("Seat_Weight (lbs)", 0)
         additional_payload = seats_removed * seat_weight
@@ -132,12 +137,10 @@ else:
     else:
         st.error("Payload check: Over weight!")
     
-    # Door Fit Check
+    # Door Fit Check: test if cargo fits through the door in either orientation.
     door_w = selected_aircraft["Door_W (in)"]
     door_h = selected_aircraft["Door_H (in)"]
-    
-    # Check for two rotations: (length vs width) or (switched)
-    fits_door = ((part_length <= door_w and part_width <= door_h) or 
+    fits_door = ((part_length <= door_w and part_width <= door_h) or
                  (part_length <= door_h and part_width <= door_w))
     
     if fits_door:
@@ -145,9 +148,9 @@ else:
     else:
         st.error("The cargo does not fit through the aircraft door.")
     
-    # Cabin Fit Check
-    cabin_fit = ((part_length <= selected_aircraft["Cabin_L (in)"]) and 
-                 (part_width <= selected_aircraft["Cabin_W (in)"]) and 
+    # Cabin Fit Check: verify if cargo dimensions are within the cabin limits.
+    cabin_fit = ((part_length <= selected_aircraft["Cabin_L (in)"]) and
+                 (part_width <= selected_aircraft["Cabin_W (in)"]) and
                  (part_height <= selected_aircraft["Cabin_H (in)"]))
     
     if cabin_fit:
@@ -157,6 +160,6 @@ else:
     
     st.markdown("---")
     
-    # Visualization Placeholder
+    # Visualization Section (Placeholder)
     st.subheader("Visualization")
-    st.info("Visualization functionality coming soon! (For example, 3D rotation and insertion path animation)")
+    st.info("Visualization functionality coming soon! (e.g., 3D rotation and insertion path animation)")
