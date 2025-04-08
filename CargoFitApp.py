@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
+import io
+
+# Display the OnFly Air logo (ensure the file is in the repository)
+st.image("OFA_Gold_Black.png", width=200)
 
 st.title("OnFly Air Cargo Fit Tool")
 st.markdown("This app determines if a specified piece of cargo fits into the selected aircraft based on dimensions and payload limits.")
@@ -14,8 +19,7 @@ def load_aircraft_data(url):
         df = pd.read_csv(url)
         # Clean column names
         df.columns = [col.strip() for col in df.columns]
-
-        # Remove non-numeric characters and convert numeric columns to numbers.
+        # Process numeric columns: remove commas, tildes, extra spaces.
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -24,13 +28,11 @@ def load_aircraft_data(url):
         ]
         for col in numeric_columns:
             if col in df.columns:
-                # Remove commas, tildes, and extra spaces; then convert to numeric.
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
                 df[col] = df[col].str.replace("~", "", regex=False)
                 df[col] = df[col].str.strip()
-                # For "Removable Seats": if originally text such as "Yes"/"No", convert to numeric:
+                # For "Removable Seats", convert "Yes"/"No" to numeric values.
                 if col == "Removable Seats":
-                    # Example: convert "Yes" to 2 (estimate) and "No" to 0.
                     df[col] = df[col].replace({"Yes": "2", "No": "0"})
                 df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
@@ -38,22 +40,20 @@ def load_aircraft_data(url):
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# Load aircraft specifications
+# Load the aircraft specifications
 df_aircraft = load_aircraft_data(csv_url)
 
 if df_aircraft.empty:
     st.error("Aircraft data could not be loaded. Please check your network connection or spreadsheet settings.")
 else:
-    # Show available columns for debugging (optional)
-    # st.write("Available columns: " + ", ".join(df_aircraft.columns.tolist()))
-
-    ## STEP 1: Aircraft Selection (at the top)
+    # ---------------------------
+    # Step 1: Aircraft Selection
+    # ---------------------------
     st.header("Step 1: Select an Aircraft")
     aircraft_options = df_aircraft["Aircraft"].dropna().unique()
     selected_aircraft_model = st.selectbox("Select Aircraft", options=aircraft_options)
-    
-    # Get row for selected aircraft
     selected_aircraft = df_aircraft[df_aircraft["Aircraft"] == selected_aircraft_model].iloc[0]
+    
     st.subheader("Selected Aircraft Details")
     st.write(f"**Aircraft:** {selected_aircraft['Aircraft']}")
     st.write(f"**Cargo Door Dimensions:** {selected_aircraft['Door Width (in)']} in (W) x {selected_aircraft['Door Height (in)']} in (H)")
@@ -64,7 +64,9 @@ else:
     
     st.markdown("---")
     
-    ## STEP 2: Cargo Input and Other Data
+    # ---------------------------
+    # Step 2: Cargo (Part) Input
+    # ---------------------------
     st.header("Step 2: Enter Cargo (Part) Details")
     part_name = st.text_input("Part Name")
     col1, col2, col3 = st.columns(3)
@@ -76,7 +78,6 @@ else:
         part_height = st.number_input("Height (in)", min_value=0.0, value=0.0, step=0.1)
     part_weight = st.number_input("Weight (lbs)", min_value=0.0, value=0.0, step=1.0)
     
-    # Mechanics Input
     mechanics_travel = st.checkbox("Are mechanics traveling?")
     if mechanics_travel:
         num_mechanics = st.number_input("Number of Mechanics", min_value=1, value=1, step=1)
@@ -87,7 +88,6 @@ else:
         avg_mech_weight = 0.0
         tool_weight = 0.0
     
-    # Seat Removal Option
     remove_seat = st.checkbox("Remove a seat (cargo-only flight)?")
     if remove_seat:
         max_removable = selected_aircraft.get("Removable Seats", 0)
@@ -98,7 +98,9 @@ else:
     
     st.markdown("---")
     
-    ## STEP 3: Saved Parts (optional)
+    # ---------------------------
+    # Step 3: Save/Load Parts (Optional)
+    # ---------------------------
     st.header("Step 3: Save/Load Parts")
     if "saved_parts" not in st.session_state:
         st.session_state.saved_parts = {}
@@ -113,7 +115,6 @@ else:
             st.success(f"Saved part: {part_name}")
         else:
             st.error("Please provide a Part Name to save.")
-    
     if st.session_state.saved_parts:
         saved_options = list(st.session_state.saved_parts.keys())
         saved_selected = st.selectbox("Select a saved part to load values", options=saved_options)
@@ -124,10 +125,12 @@ else:
             part_height = loaded["Height"]
             part_weight = loaded["Weight"]
             st.info(f"Loaded part: {saved_selected}")
-
+    
     st.markdown("---")
     
-    ## STEP 4: Calculations and Fit Checks
+    # ---------------------------
+    # Step 4: Mission Feasibility Calculation
+    # ---------------------------
     st.header("Step 4: Mission Feasibility Calculation")
     total_cargo_weight = part_weight + (num_mechanics * avg_mech_weight) + tool_weight
     seat_weight_col = selected_aircraft.get("Seat Weight (lbs)", float('nan'))
@@ -152,7 +155,6 @@ else:
     else:
         st.write("Payload check: Cannot be performed (missing data).")
     
-    # Door and Cabin Fit Checks
     door_w = selected_aircraft["Door Width (in)"]
     door_h = selected_aircraft["Door Height (in)"]
     fits_door = False
@@ -183,39 +185,49 @@ else:
     
     st.markdown("---")
     
-    ## STEP 5: Visualization
-    st.header("Step 5: Visualization")
-    st.markdown("Below is a simple visualization of how your cargo (part) fits through the aircraft door in two orientations.")
-
-    if not pd.isnull(door_w) and not pd.isnull(door_h):
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        # Orientation 1: Cargo as (length, width)
-        ax1.set_title("Orientation 1: (L x W)")
-        # Draw door
+    # ---------------------------
+    # Step 5: Visualization and Animation
+    # ---------------------------
+    st.header("Step 5: Visualization and Animation")
+    st.markdown("Below is an animated visualization of the cargo moving through the door.")
+    
+    def create_cargo_animation(door_w, door_h, cargo_length, cargo_width, frames=20):
+        fig, ax = plt.subplots(figsize=(6,6))
+        ax.set_xlim(0, max(door_w, cargo_length) + 10)
+        ax.set_ylim(0, max(door_h, cargo_width) + 10)
+        ax.set_xlabel("inches")
+        ax.set_ylabel("inches")
+        ax.set_title("Cargo Animation: Moving Through Door")
+        
+        # Draw the door rectangle (blue)
         door_rect = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
-        ax1.add_patch(door_rect)
-        # Draw cargo rectangle in Orientation 1
-        cargo_rect1 = plt.Rectangle((0, 0), part_length, part_width, edgecolor='green' if (part_length <= door_w and part_width <= door_h) else 'red', facecolor='none', lw=2)
-        ax1.add_patch(cargo_rect1)
-        ax1.set_xlim(0, max(door_w, part_length) + 5)
-        ax1.set_ylim(0, max(door_h, part_width) + 5)
-        ax1.set_xlabel("inches")
-        ax1.set_ylabel("inches")
+        ax.add_patch(door_rect)
         
-        # Orientation 2: Cargo as (width, length)
-        ax2.set_title("Orientation 2: (W x L)")
-        door_rect2 = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
-        ax2.add_patch(door_rect2)
-        cargo_rect2 = plt.Rectangle((0, 0), part_width, part_length, edgecolor='green' if (part_width <= door_w and part_length <= door_h) else 'red', facecolor='none', lw=2)
-        ax2.add_patch(cargo_rect2)
-        ax2.set_xlim(0, max(door_w, part_width) + 5)
-        ax2.set_ylim(0, max(door_h, part_length) + 5)
-        ax2.set_xlabel("inches")
+        # Start the cargo rectangle to the left of the door
+        cargo_rect = plt.Rectangle((-cargo_length, (door_h - cargo_width) / 2), cargo_length, cargo_width,
+                                     edgecolor='green', facecolor='none', lw=2)
+        ax.add_patch(cargo_rect)
         
-        st.pyplot(fig)
+        def update(frame):
+            # Slide the cargo from left (off-screen) to right (across the door)
+            new_x = -cargo_length + frame * (door_w + cargo_length) / frames
+            cargo_rect.set_x(new_x)
+            return (cargo_rect,)
+        
+        ani = FuncAnimation(fig, update, frames=frames, interval=200, blit=True)
+        buf = io.BytesIO()
+        writer = PillowWriter(fps=5)
+        ani.save(buf, writer=writer, format='gif')
+        buf.seek(0)
+        plt.close(fig)
+        return buf
+
+    if pd.notnull(door_w) and pd.notnull(door_h):
+        cargo_animation_buf = create_cargo_animation(door_w, door_h, part_length, part_width)
+        st.image(cargo_animation_buf, caption="Animation: Cargo Moving Through Door")
     else:
-        st.info("Door dimensions unavailable; cannot display visualization.")
+        st.info("Door dimensions unavailable; cannot display animation.")
     
     st.markdown("---")
     st.header("Notes")
-    st.markdown("Visualization shows two possible cargo orientations (green indicates a fit, red indicates it does not).")
+    st.markdown("The animation shows how the cargo moves through the door. Green indicates a proper fit during the movement.")
