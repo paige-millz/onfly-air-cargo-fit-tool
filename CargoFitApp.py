@@ -28,20 +28,20 @@ else:
     st.write("Available columns:", df_aircraft.columns.tolist())
 
     st.sidebar.subheader("Aircraft Selection")
-    # Assumes the CSV has a column named "Model"
-    aircraft_options = df_aircraft["Model"].dropna().unique()
-    selected_model = st.sidebar.selectbox("Select Aircraft", options=aircraft_options)
+    # Use the "Aircraft" column for selection now.
+    aircraft_options = df_aircraft["Aircraft"].dropna().unique()
+    selected_aircraft_model = st.sidebar.selectbox("Select Aircraft", options=aircraft_options)
     
     # Get the row for the selected aircraft.
-    selected_aircraft = df_aircraft[df_aircraft["Model"] == selected_model].iloc[0]
+    selected_aircraft = df_aircraft[df_aircraft["Aircraft"] == selected_aircraft_model].iloc[0]
     
     st.subheader("Selected Aircraft Details")
-    st.write(f"**Model:** {selected_aircraft['Model']}")
-    st.write(f"**Cargo Door Dimensions:** {selected_aircraft['Door_W (in)']} in (W) x {selected_aircraft['Door_H (in)']} in (H)")
-    st.write(f"**Cabin Dimensions:** {selected_aircraft['Cabin_L (in)']} in (L) x {selected_aircraft['Cabin_W (in)']} in (W) x {selected_aircraft['Cabin_H (in)']} in (H)")
-    st.write(f"**Max Payload:** {selected_aircraft['Max_Payload (lbs)']} lbs")
-    st.write(f"**Seats:** {selected_aircraft['Seats']} (Removable: {selected_aircraft['Removable_Seats']})")
-    st.write(f"**Seat Info:** Weight: {selected_aircraft['Seat_Weight (lbs)']} lbs, Dimensions: {selected_aircraft['Seat_L (in)']} x {selected_aircraft['Seat_W (in)']} x {selected_aircraft['Seat_H (in)']} in")
+    st.write(f"**Aircraft:** {selected_aircraft['Aircraft']}")
+    st.write(f"**Cargo Door Dimensions:** {selected_aircraft['Door Width (in)']} in (W) x {selected_aircraft['Door Height (in)']} in (H)")
+    st.write(f"**Cabin Dimensions:** {selected_aircraft['Cabin Length (in)']} in (L) x {selected_aircraft['Cabin Width (in)']} in (W) x {selected_aircraft['Cabin Height (in)']} in (H)")
+    st.write(f"**Max Payload:** {selected_aircraft['Max Payload (lbs)']} lbs")
+    st.write(f"**Seats:** {selected_aircraft['Number of Seats']} (Removable: {selected_aircraft['Removable Seats']})")
+    st.write(f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in")
     
     st.markdown("---")
     
@@ -73,7 +73,7 @@ else:
     # Seat Removal Option
     remove_seat = st.checkbox("Remove a seat (cargo-only flight)?")
     if remove_seat:
-        max_removable = selected_aircraft.get("Removable_Seats", 0)
+        max_removable = selected_aircraft.get("Removable Seats", 0)
         seats_removed = st.number_input("Number of Seats to Remove",
                                         min_value=1,
                                         max_value=int(max_removable) if pd.notnull(max_removable) else 1,
@@ -122,12 +122,12 @@ else:
     
     # If seats are removed, add the weight back to available payload capacity.
     if seats_removed > 0:
-        seat_weight = selected_aircraft.get("Seat_Weight (lbs)", 0)
+        seat_weight = selected_aircraft.get("Seat Weight (lbs)", 0)
         additional_payload = seats_removed * seat_weight
     else:
         additional_payload = 0
 
-    available_payload = selected_aircraft["Max_Payload (lbs)"] + additional_payload
+    available_payload = selected_aircraft["Max Payload (lbs)"] + additional_payload
     
     st.write(f"**Total Required Payload Weight:** {total_cargo_weight:.2f} lbs")
     st.write(f"**Available Payload:** {available_payload:.2f} lbs")
@@ -138,8 +138,8 @@ else:
         st.error("Payload check: Over weight!")
     
     # Door Fit Check: test if cargo fits through the door in either orientation.
-    door_w = selected_aircraft["Door_W (in)"]
-    door_h = selected_aircraft["Door_H (in)"]
+    door_w = selected_aircraft["Door Width (in)"]
+    door_h = selected_aircraft["Door Height (in)"]
     fits_door = ((part_length <= door_w and part_width <= door_h) or
                  (part_length <= door_h and part_width <= door_w))
     
@@ -149,9 +149,9 @@ else:
         st.error("The cargo does not fit through the aircraft door.")
     
     # Cabin Fit Check: verify if cargo dimensions are within the cabin limits.
-    cabin_fit = ((part_length <= selected_aircraft["Cabin_L (in)"]) and
-                 (part_width <= selected_aircraft["Cabin_W (in)"]) and
-                 (part_height <= selected_aircraft["Cabin_H (in)"]))
+    cabin_fit = ((part_length <= selected_aircraft["Cabin Length (in)"]) and
+                 (part_width <= selected_aircraft["Cabin Width (in)"]) and
+                 (part_height <= selected_aircraft["Cabin Height (in)"]))
     
     if cabin_fit:
         st.success("The cargo fits within the cabin.")
