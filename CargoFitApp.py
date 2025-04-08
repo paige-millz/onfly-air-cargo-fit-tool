@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.animation import FuncAnimation, PillowWriter  # kept for other parts if needed
 import io
 
-# Display the OnFly Air logo (ensure this file is in the repo's root)
+# Display the OnFly Air logo (ensure "OFA_Gold_Black.png" is in the repository root)
 st.image("OFA_Gold_Black.png", width=200)
 
 st.title("OnFly Air Cargo Fit Tool")
@@ -19,7 +19,7 @@ def load_aircraft_data(url):
         df = pd.read_csv(url)
         # Clean column names
         df.columns = [col.strip() for col in df.columns]
-        # Process numeric columns: remove commas, tildes, extra spaces.
+        # Process numeric columns: remove commas, tildes, and extra spaces.
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -185,49 +185,52 @@ else:
     st.markdown("---")
     
     # ---------------------------
-    # Step 5: Visualization and Animation
+    # Step 5: Visualization
     # ---------------------------
-    st.header("Step 5: Visualization and Animation")
-    st.markdown("Below is an animated visualization of the cargo moving through the door.")
+    st.header("Step 5: Visualization")
+    st.markdown("Below are static visualizations showing how the cargo can be positioned through the door in two orientations.")
     
-    def create_cargo_animation(door_w, door_h, cargo_length, cargo_width, frames=20):
-        fig, ax = plt.subplots(figsize=(6,6))
-        ax.set_xlim(0, max(door_w, cargo_length) + 10)
-        ax.set_ylim(0, max(door_h, cargo_width) + 10)
-        ax.set_xlabel("inches")
-        ax.set_ylabel("inches")
-        ax.set_title("Cargo Animation: Moving Through Door")
+    def create_cargo_visualization(door_w, door_h, cargo_length, cargo_width):
+        # Create a figure with two subplots side-by-side
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
         
-        # Draw the door rectangle (blue)
+        # Orientation 1: Cargo as (Length x Width)
+        ax1.set_title("Orientation 1: (L x W)")
         door_rect = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
-        ax.add_patch(door_rect)
+        ax1.add_patch(door_rect)
+        # Center the cargo in the door area for illustration
+        cargo_rect1 = plt.Rectangle(((door_w - cargo_length) / 2, (door_h - cargo_width) / 2),
+                                    cargo_length, cargo_width,
+                                    edgecolor='green' if (cargo_length <= door_w and cargo_width <= door_h) else 'red',
+                                    facecolor='none', lw=2)
+        ax1.add_patch(cargo_rect1)
+        ax1.set_xlim(0, door_w + 20)
+        ax1.set_ylim(0, door_h + 20)
+        ax1.set_xlabel("inches")
+        ax1.set_ylabel("inches")
         
-        # Start the cargo rectangle to the left of the door
-        cargo_rect = plt.Rectangle((-cargo_length, (door_h - cargo_width) / 2), cargo_length, cargo_width,
-                                     edgecolor='green', facecolor='none', lw=2)
-        ax.add_patch(cargo_rect)
+        # Orientation 2: Cargo as (Width x Length)
+        ax2.set_title("Orientation 2: (W x L)")
+        door_rect2 = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
+        ax2.add_patch(door_rect2)
+        cargo_rect2 = plt.Rectangle(((door_w - cargo_width) / 2, (door_h - cargo_length) / 2),
+                                    cargo_width, cargo_length,
+                                    edgecolor='green' if (cargo_width <= door_w and cargo_length <= door_h) else 'red',
+                                    facecolor='none', lw=2)
+        ax2.add_patch(cargo_rect2)
+        ax2.set_xlim(0, door_w + 20)
+        ax2.set_ylim(0, door_h + 20)
+        ax2.set_xlabel("inches")
         
-        def update(frame):
-            # Slide the cargo from left (off-screen) to the right (past the door)
-            new_x = -cargo_length + frame * (door_w + cargo_length) / frames
-            cargo_rect.set_x(new_x)
-            return (cargo_rect,)
-        
-        ani = FuncAnimation(fig, update, frames=frames, interval=200, blit=True)
-        buf = io.BytesIO()
-        writer = PillowWriter(fps=5)
-        # Remove the format parameter
-        ani.save(buf, writer=writer)
-        buf.seek(0)
-        plt.close(fig)
-        return buf
-
+        plt.tight_layout()
+        return fig
+    
     if pd.notnull(door_w) and pd.notnull(door_h):
-        cargo_animation_buf = create_cargo_animation(door_w, door_h, part_length, part_width)
-        st.image(cargo_animation_buf, caption="Animation: Cargo Moving Through Door")
+        fig = create_cargo_visualization(door_w, door_h, part_length, part_width)
+        st.pyplot(fig)
     else:
-        st.info("Door dimensions unavailable; cannot display animation.")
+        st.info("Door dimensions unavailable; cannot display visualization.")
     
     st.markdown("---")
     st.header("Notes")
-    st.markdown("The animation shows how the cargo moves through the door. Green indicates a proper fit during the movement.")
+    st.markdown("The visualizations illustrate two possible placements for the cargo relative to the door. A green outline indicates that the cargo fits, while red indicates it does not.")
