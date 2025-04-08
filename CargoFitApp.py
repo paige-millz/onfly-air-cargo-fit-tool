@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 import io
 
-# Display the OnFly Air logo (ensure the file is in the repository)
+# Display the OnFly Air logo (ensure this file is in the root of your repo)
 st.image("OFA_Gold_Black.png", width=200)
 
 st.title("OnFly Air Cargo Fit Tool")
@@ -19,7 +19,7 @@ def load_aircraft_data(url):
         df = pd.read_csv(url)
         # Clean column names
         df.columns = [col.strip() for col in df.columns]
-        # Process numeric columns: remove commas, tildes, extra spaces.
+        # Process numeric columns by removing extra characters
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -31,7 +31,6 @@ def load_aircraft_data(url):
                 df[col] = df[col].astype(str).str.replace(",", "", regex=False)
                 df[col] = df[col].str.replace("~", "", regex=False)
                 df[col] = df[col].str.strip()
-                # For "Removable Seats", convert "Yes"/"No" to numeric values.
                 if col == "Removable Seats":
                     df[col] = df[col].replace({"Yes": "2", "No": "0"})
                 df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -40,7 +39,7 @@ def load_aircraft_data(url):
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# Load the aircraft specifications
+# Load aircraft specifications
 df_aircraft = load_aircraft_data(csv_url)
 
 if df_aircraft.empty:
@@ -209,7 +208,7 @@ else:
         ax.add_patch(cargo_rect)
         
         def update(frame):
-            # Slide the cargo from left (off-screen) to right (across the door)
+            # Slide the cargo from left (off-screen) to the right (past the door)
             new_x = -cargo_length + frame * (door_w + cargo_length) / frames
             cargo_rect.set_x(new_x)
             return (cargo_rect,)
