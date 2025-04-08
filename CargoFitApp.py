@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 import io
 
-# Display the OnFly Air logo (ensure this file is in the root of your repo)
+# Display the OnFly Air logo (ensure this file is in the repo's root)
 st.image("OFA_Gold_Black.png", width=200)
 
 st.title("OnFly Air Cargo Fit Tool")
@@ -19,7 +19,7 @@ def load_aircraft_data(url):
         df = pd.read_csv(url)
         # Clean column names
         df.columns = [col.strip() for col in df.columns]
-        # Process numeric columns by removing extra characters
+        # Process numeric columns: remove commas, tildes, extra spaces.
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -216,7 +216,8 @@ else:
         ani = FuncAnimation(fig, update, frames=frames, interval=200, blit=True)
         buf = io.BytesIO()
         writer = PillowWriter(fps=5)
-        ani.save(buf, writer=writer, format='gif')
+        # Remove the format parameter
+        ani.save(buf, writer=writer)
         buf.seek(0)
         plt.close(fig)
         return buf
