@@ -6,9 +6,7 @@ import io
 # ---------------------------
 # Configuration and Logo
 # ---------------------------
-# Display the OnFly Air logo (ensure "OFA_Gold_Black.png" is in the repository root)
 st.image("OFA_Gold_Black.png", width=200)
-
 st.title("OnFly Air Cargo Fit Tool")
 st.markdown("This app determines if a specified piece of cargo fits into the selected aircraft based on dimensions and payload limits.")
 
@@ -22,9 +20,7 @@ csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_N
 def load_aircraft_data(url):
     try:
         df = pd.read_csv(url)
-        # Clean column names
         df.columns = [col.strip() for col in df.columns]
-        # Process numeric columns
         numeric_columns = [
             "Door Width (in)", "Door Height (in)",
             "Cabin Length (in)", "Cabin Width (in)", "Cabin Height (in)",
@@ -44,8 +40,8 @@ def load_aircraft_data(url):
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# URL for the Historical Parts CSV – update this placeholder with your actual URL!
-historical_parts_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vHISTORICAL_PARTS_URL/pub?gid=123456789&output=csv"
+# URL for the Historical Parts CSV – update this with your actual published URL for the "Historical Parts" tab
+historical_parts_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vYOUR_HISTORICAL_PARTS_URL/pub?gid=YOUR_GID&output=csv"
 
 @st.cache_data
 def load_historical_parts(url):
@@ -65,7 +61,6 @@ def load_historical_parts(url):
         st.error(f"Error loading historical parts data: {e}")
         return pd.DataFrame()
 
-# Load data
 df_aircraft = load_aircraft_data(csv_url)
 df_hist_parts = load_historical_parts(historical_parts_csv_url)
 
@@ -86,7 +81,10 @@ else:
     st.write(f"**Cabin Dimensions:** {selected_aircraft['Cabin Length (in)']} in (L) x {selected_aircraft['Cabin Width (in)']} in (W) x {selected_aircraft['Cabin Height (in)']} in (H)")
     st.write(f"**Max Payload:** {selected_aircraft['Max Payload (lbs)']} lbs")
     st.write(f"**Seats:** {int(selected_aircraft['Number of Seats'])} (Removable: {int(selected_aircraft['Removable Seats'])})")
-    st.write(f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in")
+    st.write(
+        f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, "
+        f"Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in"
+    )
     
     st.markdown("---")
     
@@ -94,8 +92,7 @@ else:
     # Step 2: Cargo (Part) Input & Historical Parts Lookup
     # ---------------------------
     st.header("Step 2: Enter Cargo (Part) Details")
-    # Let user either type a new part name or select from historical parts.
-    part_name_input = st.text_input("Enter New Part Name (or leave blank to use a historical part)")
+    part_name_input = st.text_input("Enter New Part Name (or leave blank to select a historical part)")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -106,48 +103,38 @@ else:
         part_height = st.number_input("Height (in)", min_value=0.0, value=0.0, step=0.1)
     part_weight = st.number_input("Weight (lbs)", min_value=0.0, value=0.0, step=1.0)
     
-    # Historical Parts lookup (if historical parts data is available)
+    # Historical Parts Lookup
     if not df_hist_parts.empty:
         st.subheader("Historical Parts Lookup")
-        # If the user has entered dimensions (nonzero), filter for parts that match within 1 inch tolerance.
         tol = 1.0
+        filtered_recs = None
         if part_length > 0 and part_width > 0 and part_height > 0:
-            filtered = df_hist_parts[
+            filtered_recs = df_hist_parts[
                 (abs(df_hist_parts["Length (in)"] - part_length) <= tol) &
                 (abs(df_hist_parts["Width (in)"] - part_width) <= tol) &
                 (abs(df_hist_parts["Height (in)"] - part_height) <= tol)
             ]
-            if not filtered.empty:
-                recommended_parts = filtered["Part Name"].dropna().unique().tolist()
-                selected_hist_part = st.selectbox("Select Recommended Historical Part", options=[""] + recommended_parts)
-                if selected_hist_part != "":
-                    st.write("Recommended Historical Part:", selected_hist_part)
-                    # Optionally, show the recommended dimensions and weight for reference:
-                    rec = filtered[filtered["Part Name"] == selected_hist_part].iloc[0]
-                    st.info(
-                        f"Historical Dimensions: {rec['Length (in)']} in x {rec['Width (in)']} in x {rec['Height (in)']} in, "
-                        f"Weight: {rec['Weight (lbs)']} lbs"
-                    )
-            else:
+            if filtered_recs.empty:
                 st.info("No historical parts closely match the entered dimensions.")
+        # If filtering produced results, use them; otherwise use all historical parts.
+        if filtered_recs is not None and not filtered_recs.empty:
+            hist_parts_options = filtered_recs["Part Name"].dropna().unique().tolist()
         else:
-            # If no dimensions are entered, let the user pick from all parts.
-            all_parts = df_hist_parts["Part Name"].dropna().unique().tolist()
-            selected_hist_part = st.selectbox("Select a Historical Part (all)", options=[""] + all_parts)
-            if selected_hist_part != "":
-                st.write("Selected Historical Part:", selected_hist_part)
-                rec = df_hist_parts[df_hist_parts["Part Name"] == selected_hist_part].iloc[0]
-                st.info(
-                    f"Historical Dimensions: {rec['Length (in)']} in x {rec['Width (in)']} in x {rec['Height (in)']} in, "
-                    f"Weight: {rec['Weight (lbs)']} lbs"
-                )
+            hist_parts_options = df_hist_parts["Part Name"].dropna().unique().tolist()
+        selected_hist_part = st.selectbox("Select a Historical Part", options=[""] + hist_parts_options)
+        if selected_hist_part != "":
+            st.write("Selected Historical Part:", selected_hist_part)
+            rec = df_hist_parts[df_hist_parts["Part Name"] == selected_hist_part].iloc[0]
+            st.info(
+                f"Historical Dimensions: {rec['Length (in)']} in x {rec['Width (in)']} in x {rec['Height (in)']} in, "
+                f"Weight: {rec['Weight (lbs)']} lbs"
+            )
     else:
         st.info("No historical parts data available.")
     
-    # Decide final part name: if user entered a new name, use that; otherwise, if a historical part is selected, use that.
-    part_name = part_name_input if part_name_input.strip() != "" else (selected_hist_part if 'selected_hist_part' in locals() and selected_hist_part != "" else "Unnamed Part")
-    
-    st.write(f"**Final Part Name:** {part_name}")
+    # Final Part Name determination: new input takes precedence over historical selection.
+    final_part_name = part_name_input.strip() if part_name_input.strip() != "" else (selected_hist_part if 'selected_hist_part' in locals() and selected_hist_part != "" else "Unnamed Part")
+    st.write(f"**Final Part Name:** {final_part_name}")
     
     st.markdown("---")
     
@@ -158,13 +145,13 @@ else:
     if "saved_parts" not in st.session_state:
         st.session_state.saved_parts = {}
     if st.button("Save Part"):
-        st.session_state.saved_parts[part_name] = {
+        st.session_state.saved_parts[final_part_name] = {
             "Length": part_length,
             "Width": part_width,
             "Height": part_height,
             "Weight": part_weight
         }
-        st.success(f"Saved part: {part_name}")
+        st.success(f"Saved part: {final_part_name}")
     if st.session_state.saved_parts:
         saved_options = list(st.session_state.saved_parts.keys())
         saved_selected = st.selectbox("Select a saved part to load values", options=[""] + saved_options)
@@ -182,7 +169,11 @@ else:
     # Step 4: Mission Feasibility Calculation
     # ---------------------------
     st.header("Step 4: Mission Feasibility Calculation")
-    mechanics_travel_flag = st.checkbox("Include mechanics in payload calculation", value=mechanics_travel)
+    mechanics_travel = st.checkbox("Include mechanics in payload calculation")
+    num_mechanics = st.number_input("Number of Mechanics", min_value=1, value=1, step=1) if mechanics_travel else 0
+    avg_mech_weight = st.number_input("Average Weight per Mechanic (lbs)", min_value=0.0, value=180.0, step=1.0) if mechanics_travel else 0.0
+    tool_weight = st.number_input("Total Tool Weight (lbs)", min_value=0.0, value=0.0, step=1.0) if mechanics_travel else 0.0
+    
     total_cargo_weight = part_weight + (num_mechanics * avg_mech_weight) + tool_weight
     seat_weight = selected_aircraft.get("Seat Weight (lbs)", float('nan'))
     additional_payload = seats_removed * seat_weight if seats_removed > 0 and pd.notnull(seat_weight) else 0
@@ -233,17 +224,14 @@ else:
     # ---------------------------
     st.header("Step 5: Visualization")
     st.markdown(
-        "Below is a simple mockup comparing the cargo dimensions to the door dimensions. "
-        "The door is drawn as a blue rectangle starting at (0,0) and the cargo as an outline starting at (0,0). "
-        "If the cargo completely fits within the door, the cargo outline is green; if not, it is red."
+        "Below is a mockup comparing the cargo dimensions to the door. The door is drawn as a blue rectangle starting at (0,0), "
+        "and the cargo as an outline starting at (0,0). Green means it fits; red means it exceeds the door dimensions."
     )
     
     def create_cargo_visualization(door_w, door_h, cargo_length, cargo_width):
         fig, ax = plt.subplots(figsize=(6,6))
-        # Draw door rectangle (blue)
         door_rect = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', facecolor='none', lw=2)
         ax.add_patch(door_rect)
-        # Draw cargo rectangle starting at (0,0)
         color = "green" if (cargo_length <= door_w and cargo_width <= door_h) else "red"
         cargo_rect = plt.Rectangle((0, 0), cargo_length, cargo_width, edgecolor=color, facecolor='none', lw=2)
         ax.add_patch(cargo_rect)
@@ -263,4 +251,4 @@ else:
     
     st.markdown("---")
     st.header("Notes")
-    st.markdown("The visualization above compares the cargo and door dimensions. A green cargo rectangle indicates the cargo should fit within the door, while red indicates it is too large in at least one dimension.")
+    st.markdown("The visualization above compares cargo dimensions to door dimensions. A green outline means the cargo fits; a red outline means it does not.")
