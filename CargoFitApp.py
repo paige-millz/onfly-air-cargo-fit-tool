@@ -1,9 +1,8 @@
-# OnFly Air Cargo Fit Tool - Advanced Version with Searchable Dropdowns and Multiple Parts
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import io
 
 # ---------------------------
 # CONFIGURATION
@@ -18,11 +17,6 @@ st.markdown("Determine if cargo and mechanics fit into the selected aircraft bas
 # ---------------------------
 aircraft_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?output=csv"
 parts_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?gid=1047329111&single=true&output=csv"
-spreadsheet_id = "1JkU0-4mkXkYkRQ6-7ep1tkXUjkJrQsMZ0Tsp5rFCIkk"
-
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-client = gspread.authorize(creds)
 
 @st.cache_data
 def load_data(url):
@@ -50,12 +44,13 @@ df_parts = load_data(parts_url)
 # STEP 1: SELECT AIRCRAFT
 # ---------------------------
 st.header("Step 1: Select an Aircraft")
-selected_aircraft = st.selectbox("Choose Aircraft", df_aircraft["Aircraft"].dropna().unique(), index=0)
+aircraft_options = df_aircraft["Aircraft"].dropna().unique().tolist()
+selected_aircraft = st.selectbox("Choose Aircraft", aircraft_options, index=0)
 aircraft_data = df_aircraft[df_aircraft["Aircraft"] == selected_aircraft].iloc[0]
 
 st.subheader("Selected Aircraft Specs")
-st.write(f"Door: {aircraft_data['Door Width (in)']}\" W x {aircraft_data['Door Height (in)']}\" H")
-st.write(f"Cabin: {aircraft_data['Cabin Length (in)']}\" L x {aircraft_data['Cabin Width (in)']}\" W x {aircraft_data['Cabin Height (in)']}\" H")
+st.write(f"Door: {aircraft_data['Door Width (in)']}" W x {aircraft_data['Door Height (in)']}" H")
+st.write(f"Cabin: {aircraft_data['Cabin Length (in)']}" L x {aircraft_data['Cabin Width (in)']}" W x {aircraft_data['Cabin Height (in)']}" H")
 st.write(f"Max Payload: {aircraft_data['Max Payload (lbs)']} lbs")
 
 st.markdown("---")
@@ -71,6 +66,8 @@ if "parts_list" not in st.session_state:
 with st.form("add_part_form"):
     part_names = df_parts["Part"].dropna().astype(str).unique().tolist()
     part_name = st.selectbox("Choose Existing Part or Enter New Name", ["(New)"] + sorted(part_names))
+
+    part_aircraft = st.selectbox("Select Aircraft for This Part", aircraft_options)
 
     if part_name == "(New)":
         part_name = st.text_input("New Part Name", value="")
@@ -93,6 +90,7 @@ with st.form("add_part_form"):
     if submitted:
         new_part = {
             "Name": part_name,
+            "Aircraft": part_aircraft,
             "Length": length,
             "Width": width,
             "Height": height,
@@ -100,19 +98,101 @@ with st.form("add_part_form"):
         }
         st.session_state.parts_list.append(new_part)
 
-        try:
-            sheet = client.open_by_key(spreadsheet_id).worksheet("Historical Parts")
-            sheet.append_row([part_name, length, width, height, weight])
-            st.success("Part saved to Google Sheet")
-        except Exception as e:
-            st.warning(f"Could not write to Google Sheet: {e}")
-
 if st.session_state.parts_list:
     st.subheader("Selected Parts")
-    st.table(pd.DataFrame(st.session_state.parts_list))
+    parts_df = pd.DataFrame(st.session_state.parts_list)
+    st.table(parts_df)
+
+    csv_buffer = io.StringIO()
+    parts_df.to_csv(csv_buffer, index=False)
+    st.download_button(
+        label="📥 Download Parts as CSV",
+        data=csv_buffer.getvalue(),
+        file_name="onfly_parts_list.csv",
+        mime="text/csv"
+    )
 
 st.markdown("---")
 
-# (Rest of the app continues unchanged ...)
-# Including Steps 3–5
+# STEP 3: Mechanics and Payload
+st.header("Step 3: Mechanics and Payload")
+mechanics = st.checkbox("Include mechanics in payload?")
+mech_count = st.number_input("Number of Mechanics", min_value=0, value=0) if mechanics else 0
+mech_weight = 180
+tool_weight = st.number_input("Total Tool Weight (lbs)", min_value=0.0) if mechanics else 0.0
+seat_removed = st.checkbox("Remove a seat?")
+seat_weight = aircraft_data["Seat Weight (lbs)"] if seat_removed else 0
 
+# STEP 4: Feasibility Calculations
+st.header("Step 4: Feasibility Check")
+total_part_weight = sum(p["Weight"] for p in st.session_state.parts_list)
+total_weight = total_part_weight + mech_count * mech_weight + tool_weight
+available_payload = aircraft_data["Max Payload (lbs)"] + seat_weight
+
+st.write(f"**Total Required Payload:** {total_weight:.1f} lbs")
+st.write(f"**Available Payload:** {available_payload:.1f} lbs")
+if total_weight <= available_payload:
+    st.success("✅ Payload check passed")
+else:
+    st.error("❌ Over max payload")
+
+# STEP 5: Fit Checks
+st.header("Step 5: Door & Cabin Fit Checks")
+door_w, door_h = aircraft_data['Door Width (in)'], aircraft_data['Door Height (in)']
+cabin_l, cabin_w, cabin_h = aircraft_data['Cabin Length (in)'], aircraft_data['Cabin Width (in)'], aircraft_data['Cabin Height (in)']
+
+for part in st.session_state.parts_list:
+    fits_door = (part["Length"] <= door_w and part["Width"] <= door_h) or (part["Width"] <= door_w and part["Length"] <= door_h)
+    fits_cabin = part["Length"] <= cabin_l and part["Width"] <= cabin_w and part["Height"] <= cabin_h
+    st.write(f"**{part['Name']}**")
+    st.success("✅ Fits through door") if fits_door else st.error("❌ Too big for door")
+    st.success("✅ Fits in cabin") if fits_cabin else st.error("❌ Too big for cabin")
+
+# STEP 6: Visualization
+st.header("Step 6: Visualization")
+if st.session_state.parts_list:
+    selected_visual = st.selectbox("Select part to visualize against door", [p["Name"] for p in st.session_state.parts_list])
+    selected_data = next(p for p in st.session_state.parts_list if p["Name"] == selected_visual)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    door_rect = plt.Rectangle((0, 0), door_w, door_h, edgecolor='blue', fill=False, lw=2, label='Door')
+    cargo_rect = plt.Rectangle((0, 0), selected_data["Length"], selected_data["Width"],
+                               edgecolor='green' if (selected_data["Length"] <= door_w and selected_data["Width"] <= door_h) else 'red',
+                               fill=False, lw=2, label='Cargo')
+    ax.add_patch(door_rect)
+    ax.add_patch(cargo_rect)
+    ax.set_xlim(0, max(door_w, selected_data["Length"]) + 10)
+    ax.set_ylim(0, max(door_h, selected_data["Width"]) + 10)
+    ax.set_aspect('equal')
+    ax.set_xlabel("inches")
+    ax.set_ylabel("inches")
+    ax.set_title(f"{selected_visual} vs Door")
+    ax.legend()
+    st.pyplot(fig)
+
+    st.markdown("### Full Cargo Layout in Cabin")
+    fig2, ax2 = plt.subplots(figsize=(8, 3))
+    ax2.set_xlim(0, cabin_l)
+    ax2.set_ylim(0, cabin_w)
+    ax2.set_title("Cabin Cargo Layout")
+    ax2.set_xlabel("Cabin Length (in)")
+    ax2.set_ylabel("Cabin Width (in)")
+    x_offset = 0
+    y_offset = 0
+    spacing = 5
+
+    for part in st.session_state.parts_list:
+        if x_offset + part["Length"] > cabin_l:
+            x_offset = 0
+            y_offset += part["Width"] + spacing
+        if y_offset + part["Width"] > cabin_w:
+            ax2.text(5, cabin_w - 10, "Not all parts fit in cabin!", fontsize=12, color='red')
+            break
+        rect = plt.Rectangle((x_offset, y_offset), part["Length"], part["Width"],
+                             edgecolor='green', facecolor='lightgreen', lw=2)
+        ax2.add_patch(rect)
+        ax2.text(x_offset + 2, y_offset + 2, part["Name"], fontsize=8)
+        x_offset += part["Length"] + spacing
+
+    ax2.set_aspect('equal')
+    st.pyplot(fig2)
