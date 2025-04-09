@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-gimport gspread
+import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ---------------------------
@@ -18,8 +18,8 @@ st.markdown("Determine if cargo and mechanics fit into the selected aircraft bas
 # ---------------------------
 aircraft_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?output=csv"
 parts_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?gid=1047329111&single=true&output=csv"
+spreadsheet_id = "1JkU0-4mkXkYkRQ6-7ep1tkXUjkJrQsMZ0Tsp5rFCIkk"
 
-# Service account auth for writing to Google Sheet
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
 client = gspread.authorize(creds)
@@ -79,9 +79,11 @@ with st.form("add_part_form"):
         height = st.number_input("Height (in)", min_value=0.0, step=0.1)
         weight = st.number_input("Weight (lbs)", min_value=0.0, step=0.1)
     else:
-        record = df_parts[df_parts["Part"] == part_name].iloc[0]
-        part_name = part_name
-        length, width, height, weight = record[["Length (in)", "Width (in)", "Height (in)", "Weight (lbs.)"]]
+        match = df_parts[df_parts["Part"] == part_name]
+        if not match.empty:
+            record = match.iloc[0]
+            part_name = record["Part"]
+            length, width, height, weight = record[["Length (in)", "Width (in)", "Height (in)", "Weight (lbs.)"]]
 
     rotate = st.checkbox("Rotate part for door/cabin check? (swap L/W)")
     if rotate:
@@ -98,9 +100,8 @@ with st.form("add_part_form"):
         }
         st.session_state.parts_list.append(new_part)
 
-        # Save to Google Sheet
         try:
-            sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1J...YOUR_SPREADSHEET_ID...").worksheet("Historical Parts")
+            sheet = client.open_by_key(spreadsheet_id).worksheet("Historical Parts")
             sheet.append_row([part_name, length, width, height, weight])
             st.success("Part saved to Google Sheet")
         except Exception as e:
