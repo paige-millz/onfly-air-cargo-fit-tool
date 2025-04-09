@@ -13,8 +13,11 @@ st.markdown("This app determines if a specified piece of cargo fits into the sel
 # ---------------------------
 # Load Data Functions
 # ---------------------------
-# URL to the published Aircraft CSV (your primary data)
-csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?output=csv"
+
+# URL to the published Aircraft CSV
+csv_url = (
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vTKEEZ-L7HCLpLtJ77O_NIgZpVjKOnxVrzts1p19KGGvFX4iLinJlnFlPNlQNcSZA2tO0PP6qIkk49-/pub?output=csv"
+)
 
 @st.cache_data
 def load_aircraft_data(url):
@@ -40,15 +43,17 @@ def load_aircraft_data(url):
         st.error(f"Error loading aircraft data: {e}")
         return pd.DataFrame()
 
-# URL for the Historical Parts CSV – update this with your actual published URL for the "Historical Parts" tab
-historical_parts_csv_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vYOUR_HISTORICAL_PARTS_URL/pub?gid=YOUR_GID&output=csv"
+# URL for the Historical Parts CSV – UPDATE THIS WITH YOUR ACTUAL URL
+historical_parts_csv_url = (
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vYOUR_HISTORICAL_PARTS_URL/pub?gid=YOUR_GID&output=csv"
+)
 
 @st.cache_data
 def load_historical_parts(url):
     try:
         df = pd.read_csv(url)
         df.columns = [col.strip() for col in df.columns]
-        # Assume columns: "Part Name", "Length (in)", "Width (in)", "Height (in)", "Weight (lbs)"
+        # Expected columns: "Part Name", "Length (in)", "Width (in)", "Height (in)", "Weight (lbs)"
         numeric_columns = ["Length (in)", "Width (in)", "Height (in)", "Weight (lbs)"]
         for col in numeric_columns:
             if col in df.columns:
@@ -77,23 +82,43 @@ else:
     
     st.subheader("Selected Aircraft Details")
     st.write(f"**Aircraft:** {selected_aircraft['Aircraft']}")
-    st.write(f"**Cargo Door Dimensions:** {selected_aircraft['Door Width (in)']} in (W) x {selected_aircraft['Door Height (in)']} in (H)")
-    st.write(f"**Cabin Dimensions:** {selected_aircraft['Cabin Length (in)']} in (L) x {selected_aircraft['Cabin Width (in)']} in (W) x {selected_aircraft['Cabin Height (in)']} in (H)")
-    st.write(f"**Max Payload:** {selected_aircraft['Max Payload (lbs)']} lbs")
-    st.write(f"**Seats:** {int(selected_aircraft['Number of Seats'])} (Removable: {int(selected_aircraft['Removable Seats'])})")
     st.write(
-        f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, "
-        f"Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in"
+        f"**Cargo Door Dimensions:** {selected_aircraft['Door Width (in)']} in (W) x {selected_aircraft['Door Height (in)']} in (H)"
+    )
+    st.write(
+        f"**Cabin Dimensions:** {selected_aircraft['Cabin Length (in)']} in (L) x {selected_aircraft['Cabin Width (in)']} in (W) x {selected_aircraft['Cabin Height (in)']} in (H)"
+    )
+    st.write(f"**Max Payload:** {selected_aircraft['Max Payload (lbs)']} lbs")
+    st.write(
+        f"**Seats:** {int(selected_aircraft['Number of Seats'])} (Removable: {int(selected_aircraft['Removable Seats'])})"
+    )
+    st.write(
+        f"**Seat Info:** Weight: {selected_aircraft['Seat Weight (lbs)']} lbs, Dimensions: {selected_aircraft['Seat Length (in)']} x {selected_aircraft['Seat Width (in)']} x {selected_aircraft['Seat Height (in)']} in"
     )
     
     st.markdown("---")
     
     # ---------------------------
-    # Step 2: Cargo (Part) Input & Historical Parts Lookup
+    # Step 2: Cargo (Part) Input & Historical Parts Dropdown
     # ---------------------------
     st.header("Step 2: Enter Cargo (Part) Details")
-    part_name_input = st.text_input("Enter New Part Name (or leave blank to select a historical part)")
     
+    # Always display dropdown with historical parts.
+    if df_hist_parts.empty:
+        st.info("No historical parts data available. Please add entries in the 'Historical Parts' tab.")
+        hist_part_options = ["(None)"]
+    else:
+        # Create a sorted list of historical part names with "(None)" as the first option.
+        hist_part_options = ["(None)"] + sorted(df_hist_parts["Part Name"].dropna().unique().tolist())
+    
+    selected_hist_part = st.selectbox(
+        "Select a Historical Part (optional)",
+        options=hist_part_options,
+        index=0
+    )
+    
+    # Manual entry inputs (user can override historical part selection)
+    part_name_input = st.text_input("Enter New Part Name (if different from historical selection)", value="")
     col1, col2, col3 = st.columns(3)
     with col1:
         part_length = st.number_input("Length (in)", min_value=0.0, value=0.0, step=0.1)
@@ -103,37 +128,31 @@ else:
         part_height = st.number_input("Height (in)", min_value=0.0, value=0.0, step=0.1)
     part_weight = st.number_input("Weight (lbs)", min_value=0.0, value=0.0, step=1.0)
     
-    # Historical Parts Lookup
-    if not df_hist_parts.empty:
-        st.subheader("Historical Parts Lookup")
-        tol = 1.0
-        filtered_recs = None
-        if part_length > 0 and part_width > 0 and part_height > 0:
-            filtered_recs = df_hist_parts[
-                (abs(df_hist_parts["Length (in)"] - part_length) <= tol) &
-                (abs(df_hist_parts["Width (in)"] - part_width) <= tol) &
-                (abs(df_hist_parts["Height (in)"] - part_height) <= tol)
-            ]
-            if filtered_recs.empty:
-                st.info("No historical parts closely match the entered dimensions.")
-        # If filtering produced results, use them; otherwise use all historical parts.
-        if filtered_recs is not None and not filtered_recs.empty:
-            hist_parts_options = filtered_recs["Part Name"].dropna().unique().tolist()
-        else:
-            hist_parts_options = df_hist_parts["Part Name"].dropna().unique().tolist()
-        selected_hist_part = st.selectbox("Select a Historical Part", options=[""] + hist_parts_options)
-        if selected_hist_part != "":
-            st.write("Selected Historical Part:", selected_hist_part)
+    # Button to load the selected historical part's data
+    if selected_hist_part != "(None)":
+        if st.button("Load Selected Historical Part"):
             rec = df_hist_parts[df_hist_parts["Part Name"] == selected_hist_part].iloc[0]
-            st.info(
-                f"Historical Dimensions: {rec['Length (in)']} in x {rec['Width (in)']} in x {rec['Height (in)']} in, "
-                f"Weight: {rec['Weight (lbs)']} lbs"
-            )
-    else:
-        st.info("No historical parts data available.")
+            # Write the values to st.session_state so they persist (if needed)
+            st.session_state["historical_part_loaded"] = {
+                "Part Name": selected_hist_part,
+                "Length": rec["Length (in)"],
+                "Width": rec["Width (in)"],
+                "Height": rec["Height (in)"],
+                "Weight": rec["Weight (lbs)"]
+            }
+            st.experimental_rerun()
     
-    # Final Part Name determination: new input takes precedence over historical selection.
-    final_part_name = part_name_input.strip() if part_name_input.strip() != "" else (selected_hist_part if 'selected_hist_part' in locals() and selected_hist_part != "" else "Unnamed Part")
+    # If a historical part was loaded (saved in session state), use its values
+    if "historical_part_loaded" in st.session_state:
+        loaded_part = st.session_state["historical_part_loaded"]
+        final_part_name = loaded_part["Part Name"]
+        part_length = loaded_part["Length"]
+        part_width = loaded_part["Width"]
+        part_height = loaded_part["Height"]
+        part_weight = loaded_part["Weight"]
+    else:
+        final_part_name = part_name_input.strip() if part_name_input.strip() != "" else "(No Name)"
+    
     st.write(f"**Final Part Name:** {final_part_name}")
     
     st.markdown("---")
@@ -154,8 +173,8 @@ else:
         st.success(f"Saved part: {final_part_name}")
     if st.session_state.saved_parts:
         saved_options = list(st.session_state.saved_parts.keys())
-        saved_selected = st.selectbox("Select a saved part to load values", options=[""] + saved_options)
-        if saved_selected != "" and st.button("Load Selected Saved Part"):
+        saved_selected = st.selectbox("Select a saved part to load values", options=["(None)"] + saved_options)
+        if saved_selected != "(None)" and st.button("Load Selected Saved Part"):
             loaded = st.session_state.saved_parts[saved_selected]
             part_length = loaded["Length"]
             part_width = loaded["Width"]
